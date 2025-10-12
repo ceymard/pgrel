@@ -1,4 +1,4 @@
-module github.com/ceymard/pgrelql
+module github.com/ceymard/pgrel
 
 go 1.25.1
 
