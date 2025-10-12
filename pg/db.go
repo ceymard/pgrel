@@ -15,8 +15,11 @@
 package pg
 
 import (
+	"context"
+
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"gitlab.com/tozd/go/errors"
 )
 
 // Introspection of the database.
@@ -33,29 +36,47 @@ type Db struct {
 	RelationMap map[string]*InfoRelation
 }
 
-func NewDbInfos() *Db {
-	return &Db{
+// Create a database connection and fill the informations
+func NewDb(uri string) (*Db, error) {
+	pool, err := pgxpool.New(context.Background(), uri)
+	if err != nil {
+		return nil, errors.Errorf("failed to create pool: %w", err)
+	}
+
+	var db = &Db{
+		Pool:        pool,
 		TypeMap:     make(map[string]*Type),
 		FunctionMap: make(map[string]*Function),
 		RelationMap: make(map[string]*InfoRelation),
 	}
+
+	conn, err := pool.Acquire(context.Background())
+	if err != nil {
+		panic(err)
+	}
+	defer conn.Release()
+
+	db.Fill(conn.Conn())
+
+	return db, nil
 }
 
-func (infos *Db) Fill(conn *pgx.Conn) error {
-	if err := FillTypeInformations(infos, conn); err != nil {
+// Fill informations from the database
+func (db *Db) Fill(conn *pgx.Conn) error {
+	if err := FillTypeInformations(db, conn); err != nil {
 		return err
 	}
 
-	for _, t := range infos.Types {
-		infos.TypeMap[t.Oid] = &t
+	for _, t := range db.Types {
+		db.TypeMap[t.Oid] = &t
 	}
 
-	if err := FillFunctionInformations(infos, conn); err != nil {
+	if err := FillFunctionInformations(db, conn); err != nil {
 		return err
 	}
 
-	for _, f := range infos.Functions {
-		infos.FunctionMap[f.Identifier.String()] = &f
+	for _, f := range db.Functions {
+		db.FunctionMap[f.Identifier.String()] = &f
 	}
 
 	// if err := FillRelationInformations(infos, conn); err != nil {

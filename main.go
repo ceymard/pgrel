@@ -15,12 +15,10 @@
 package main
 
 import (
-	"context"
 	"fmt"
 	"os"
 
 	"github.com/ceymard/pgrel/pg"
-	"github.com/jackc/pgx/v5"
 )
 
 func main() {
@@ -29,20 +27,12 @@ func main() {
 		srv = os.Args[1]
 	}
 
-	conn, err := pgx.Connect(context.Background(), srv)
-	if err != nil {
-		fmt.Println("Failed to connect to database:", err)
+	if infos, err := pg.NewDb(srv); err != nil {
+		fmt.Println("Failed to create db:", err)
 		printStackTrace(err)
 		return
-	}
-	defer conn.Close(context.Background())
-
-	infos := pg.NewDbInfos()
-	if err := infos.Fill(conn); err != nil {
-		fmt.Println("Failed to fill infos:", err)
-		printStackTrace(err)
-		return
+	} else {
+		fmt.Println(infos)
 	}
 
-	fmt.Println(infos)
 }

@@ -14,10 +14,19 @@
 
 package ast
 
+import (
+	"github.com/ceymard/pgrel/pg"
+)
+
 type AstRelation struct {
 	Id *AstSqlIdentifier
 	As string
 
+	Order  []IExpression
 	Limit  int
 	Offset int
+
+	// Fields []IAstField
+
+	ResolvedRelation *pg.InfoRelation
 }
