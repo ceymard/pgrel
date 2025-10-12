@@ -31,10 +31,11 @@ SELECT
   n_elem.nspname AS elem_schema,
   t.typname AS type_name,
   n.nspname AS type_schema,
+	coalesce(t_elem.typtype = 'c', t.typtype = 'c') AS "IsComposite",
   t.typelem <> 0 AND t_elem.typname IS NOT NULL AS "IsArray",
   json_build_object(
-    'Name', COALESCE(t_elem.typname, t.typname),
-    'Schema', COALESCE(n_elem.nspname, n.nspname),
+		'Name', COALESCE(t_elem.typname, t.typname),
+		'Schema', COALESCE(n_elem.nspname, n.nspname),
     'IsArray', t.typelem <> 0 AND t_elem.typname IS NOT NULL,
 		'IsComposite', coalesce(t_elem.typtype = 'c', t.typtype = 'c'),
     'Oid', COALESCE(t_elem.oid, t.oid)::text,
@@ -60,24 +61,24 @@ type Type struct {
 
 // Query the database and fill the infos
 func FillTypeInformations(infos *DbInfos, conn *pgx.Conn) error {
-	rows, err := conn.Query(context.Background(), typeQuery)
+	rows, err := conn.Query(context.Background(), "SELECT json_agg(t.\"Type\") FROM ("+typeQuery+") t")
 	if err != nil {
 		return errors.Errorf("failed to query types: %w", err)
 	}
 	defer rows.Close()
 
-	var types []Type
 	if !rows.Next() {
 		return errors.Errorf("no types found")
 	}
 
 	var jsonstr string
+
 	err = rows.Scan(&jsonstr)
 	if err != nil {
 		return errors.Errorf("failed to scan types: %w", err)
 	}
 
-	err = json.Unmarshal([]byte(jsonstr), &types)
+	err = json.Unmarshal([]byte(jsonstr), &infos.Types)
 	if err != nil {
 		return errors.Errorf("failed to unmarshal types: %w", err)
 	}

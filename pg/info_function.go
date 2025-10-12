@@ -17,6 +17,7 @@ package pg
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 
 	"github.com/jackc/pgx/v5"
 	"gitlab.com/tozd/go/errors"
@@ -33,7 +34,7 @@ SELECT json_agg(S) FROM	(SELECT
   p.proretset AS "ReturnsSet",
   p.proisstrict AS "IsStrict",
   p.prosecdef AS "IsSetuid",
-  t.typtype = 'c' AS "ReturnsComposite",
+  t."IsComposite" AS "ReturnsComposite",
   p.provolatile = 'i' AS "IsImmutable",
   p.provolatile = 's' AS "IsStable",
   p.provolatile = 'v' AS "IsVolatile",
@@ -89,7 +90,6 @@ func FillFunctionInformations(infos *DbInfos, conn *pgx.Conn) error {
 	}
 	defer rows.Close()
 
-	var funcs []Function
 	if !rows.Next() {
 		return errors.Errorf("no functions found")
 	}
@@ -100,12 +100,16 @@ func FillFunctionInformations(infos *DbInfos, conn *pgx.Conn) error {
 		return errors.Errorf("failed to scan functions: %w", err)
 	}
 
-	err = json.Unmarshal([]byte(jsonstr), &funcs)
+	err = json.Unmarshal([]byte(jsonstr), &infos.Functions)
 	if err != nil {
 		return errors.Errorf("failed to unmarshal functions: %w", err)
 	}
 
 	return nil
+}
+
+func (f *Function) String() string {
+	return fmt.Sprintf("Function(%s())", f.Identifier.String())
 }
 
 // IsExportable returns true if the function is exportable to the web.

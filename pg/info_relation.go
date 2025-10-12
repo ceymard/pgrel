@@ -14,13 +14,16 @@
 
 package pg
 
-// We are only interested in foreign key relationships where the target column is unique.
-type Relationship struct {
+type InfoRelation struct {
 	Identifier SqlIdentifier
+	IsView     bool
 
-	Source *Relation // The relation that has the constraint
-	Target *Relation
+	Columns    []Column
+	ColumnsMap map[string]*Column
 
-	SourceColumns []string
-	TargetColumns []string
+	PrimaryKey     []string
+	UniqueTogether [][]string
+
+	OutgoingRelationships map[string]*InfoRelationship
+	IncomingRelationships map[string]*InfoRelationship
 }

@@ -22,17 +22,17 @@ type DbInfos struct {
 	TypeMap map[string]*Type
 
 	Functions []Function
-	Relations []Relation
+	Relations []InfoRelation
 
 	FunctionMap map[string]*Function
-	RelationMap map[string]*Relation
+	RelationMap map[string]*InfoRelation
 }
 
 func NewDbInfos() *DbInfos {
 	return &DbInfos{
 		TypeMap:     make(map[string]*Type),
 		FunctionMap: make(map[string]*Function),
-		RelationMap: make(map[string]*Relation),
+		RelationMap: make(map[string]*InfoRelation),
 	}
 }
 
