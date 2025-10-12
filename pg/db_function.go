@@ -14,28 +14,107 @@
 
 package pg
 
+import (
+	"context"
+	"encoding/json"
+
+	"github.com/jackc/pgx/v5"
+	"gitlab.com/tozd/go/errors"
+)
+
+var sqlGetFunctions = `WITH fulltypes AS (` + typeQuery + /* sql */ `)
+SELECT json_agg(S) FROM	(SELECT
+  json_build_object(
+    'Schema', n.nspname,
+    'Name', p.proname
+  ) AS "Identifier",
+	t."Type" AS "ReturnType",
+  l.lanname AS "Language",
+  p.proretset AS "ReturnsSet",
+  p.proisstrict AS "IsStrict",
+  p.prosecdef AS "IsSetuid",
+  t.typtype = 'c' AS "ReturnsComposite",
+  p.provolatile = 'i' AS "IsImmutable",
+  p.provolatile = 's' AS "IsStable",
+  p.provolatile = 'v' AS "IsVolatile",
+  (
+    SELECT json_agg(S) FROM (
+			SELECT
+				argnb AS "Index",
+				p.proargnames[argnb] AS "Name",
+				p.proargmodes[argnb] AS "Mode",
+				t."Type" AS "Type"
+			FROM generate_series(1, array_length(proallargtypes, 1)) argnb
+			INNER JOIN fulltypes t ON t.oid = p.proallargtypes[argnb-1]
+		) S) AS "Arguments"
+  FROM pg_proc p
+  LEFT JOIN pg_namespace n ON p.pronamespace = n.oid
+  LEFT JOIN pg_language l ON p.prolang = l.oid
+  LEFT JOIN fulltypes t ON t.oid = p.prorettype
+  ORDER BY n.nspname, p.proname) S;
+`
+
 type FunctionArgument struct {
-	Index      int    `json:"index"`
-	Name       string `json:"name"`
-	Type       *Type  `json:"type"`
-	Mode       string `json:"mode"`
-	IsVariadic bool   `json:"is_variadic"`
+	Index      int
+	Name       string
+	Type       Type
+	Mode       string // 'i'IN, 'o' OUT, 'b' INOUT, 'v' VARIADIC
+	IsVariadic bool
 }
 
 type Function struct {
-	Identifier SqlIdentifier `json:"identifier"`
+	Identifier SqlIdentifier
 
-	Arguments []*FunctionArgument `json:"args"`
+	Arguments []FunctionArgument
 
-	// Whether this function returns a table() or a setof ReturnType
-	ReturnsSet bool  `json:"returns_set"`
-	ReturnType *Type `json:"return_type"`
+	ReturnsSet       bool // Whether this function returns a table() or a setof ReturnType
+	ReturnsComposite bool // Always true if ReturnsSet ?
+	ReturnType       Type
 
 	// Other function attributes that are not relevant as of now
-	IsStrict            bool `json:"is_strict"`
-	IsVolatile          bool `json:"is_volatile"`
-	IsLeakproof         bool `json:"is_leakproof"`
-	IsCalledOnNullInput bool `json:"is_called_on_null_input"`
-	IsImmutable         bool `json:"is_immutable"`
-	IsStable            bool `json:"is_stable"`
+	IsStrict            bool // proisstrict
+	IsSetUid            bool
+	IsVolatile          bool
+	IsLeakproof         bool
+	IsCalledOnNullInput bool
+	IsImmutable         bool
+	IsStable            bool
+}
+
+// Query the database and fill the infos
+func FillFunctionInformations(infos *DbInfos, conn *pgx.Conn) error {
+	rows, err := conn.Query(context.Background(), sqlGetFunctions)
+	if err != nil {
+		return errors.Errorf("failed to query functions: %w", err)
+	}
+	defer rows.Close()
+
+	var funcs []Function
+	if !rows.Next() {
+		return errors.Errorf("no functions found")
+	}
+
+	var jsonstr string
+	err = rows.Scan(&jsonstr)
+	if err != nil {
+		return errors.Errorf("failed to scan functions: %w", err)
+	}
+
+	err = json.Unmarshal([]byte(jsonstr), &funcs)
+	if err != nil {
+		return errors.Errorf("failed to unmarshal functions: %w", err)
+	}
+
+	for _, f := range funcs {
+		infos.Functions[f.Identifier.String()] = &f
+	}
+
+	return nil
+}
+
+// IsExportable returns true if the function is exportable to the web.
+// It can only be exported if all its arguments are IN, the return type is OUT and all arguments are named.
+func (f *Function) IsExportable() bool {
+	// return f.Arguments[0].Mode == "IN" && f.Arguments[len(f.Arguments)-1].Mode == "OUT"
+	return false
 }

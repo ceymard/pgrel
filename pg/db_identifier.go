@@ -19,8 +19,9 @@ import (
 )
 
 type SqlIdentifier struct {
-	Schema      string `json:"schema"`
-	Name        string `json:"name"`
+	Schema string
+	Name   string
+
 	escapedName string
 }
 
