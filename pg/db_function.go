@@ -105,10 +105,6 @@ func FillFunctionInformations(infos *DbInfos, conn *pgx.Conn) error {
 		return errors.Errorf("failed to unmarshal functions: %w", err)
 	}
 
-	for _, f := range funcs {
-		infos.Functions[f.Identifier.String()] = &f
-	}
-
 	return nil
 }
 

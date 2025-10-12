@@ -14,6 +14,14 @@
 
 package pg
 
+import (
+	"context"
+	"encoding/json"
+
+	"github.com/jackc/pgx/v5"
+	"gitlab.com/tozd/go/errors"
+)
+
 // A query we will use to fetch complex type information
 var typeQuery = /* sql */ `
 SELECT
@@ -48,4 +56,31 @@ type Type struct {
 	Oid      string
 	OidArray string // If IsArray, the oid of the array type
 	RelId    string // When this type is a composite type
+}
+
+// Query the database and fill the infos
+func FillTypeInformations(infos *DbInfos, conn *pgx.Conn) error {
+	rows, err := conn.Query(context.Background(), typeQuery)
+	if err != nil {
+		return errors.Errorf("failed to query types: %w", err)
+	}
+	defer rows.Close()
+
+	var types []Type
+	if !rows.Next() {
+		return errors.Errorf("no types found")
+	}
+
+	var jsonstr string
+	err = rows.Scan(&jsonstr)
+	if err != nil {
+		return errors.Errorf("failed to scan types: %w", err)
+	}
+
+	err = json.Unmarshal([]byte(jsonstr), &types)
+	if err != nil {
+		return errors.Errorf("failed to unmarshal types: %w", err)
+	}
+
+	return nil
 }

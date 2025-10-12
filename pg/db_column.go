@@ -15,10 +15,10 @@
 package pg
 
 type Column struct {
-	Relation *Relation
+	Name string
+	Type *Type
 
-	Default string `json:"default"`
+	DefaultExpression string
 
-	Name string `json:"name"`
-	Type *Type  `json:"type"`
+	Nullable bool
 }

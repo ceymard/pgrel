@@ -14,16 +14,13 @@
 
 package pg
 
-type Relation struct {
+// We are only interested in foreign key relationships where the target column is unique.
+type Relationship struct {
 	Identifier SqlIdentifier
-	IsView     bool
 
-	Columns    []Column
-	ColumnsMap map[string]*Column
+	Source *Relation // The relation that has the constraint
+	Target *Relation
 
-	PrimaryKey     []string
-	UniqueTogether [][]string
-
-	OutgoingRelationships map[string]*Relationship
-	IncomingRelationships map[string]*Relationship
+	SourceColumns []string
+	TargetColumns []string
 }

@@ -1,4 +1,9 @@
+.PHONY: all
 
 all:
-	addlicense -c "Christophe Eymard" .
 	go build
+
+.PHONY: addlicense
+addlicense:
+	addlicense -c "Christophe Eymard" .
+
