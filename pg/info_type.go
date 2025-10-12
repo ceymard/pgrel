@@ -60,7 +60,7 @@ type Type struct {
 }
 
 // Query the database and fill the infos
-func FillTypeInformations(infos *DbInfos, conn *pgx.Conn) error {
+func FillTypeInformations(infos *Db, conn *pgx.Conn) error {
 	rows, err := conn.Query(context.Background(), "SELECT json_agg(t.\"Type\") FROM ("+typeQuery+") t")
 	if err != nil {
 		return errors.Errorf("failed to query types: %w", err)

@@ -14,10 +14,15 @@
 
 package pg
 
-import "github.com/jackc/pgx/v5"
+import (
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
+)
 
 // Introspection of the database.
-type DbInfos struct {
+type Db struct {
+	Pool *pgxpool.Pool
+
 	Types   []Type
 	TypeMap map[string]*Type
 
@@ -28,15 +33,15 @@ type DbInfos struct {
 	RelationMap map[string]*InfoRelation
 }
 
-func NewDbInfos() *DbInfos {
-	return &DbInfos{
+func NewDbInfos() *Db {
+	return &Db{
 		TypeMap:     make(map[string]*Type),
 		FunctionMap: make(map[string]*Function),
 		RelationMap: make(map[string]*InfoRelation),
 	}
 }
 
-func (infos *DbInfos) Fill(conn *pgx.Conn) error {
+func (infos *Db) Fill(conn *pgx.Conn) error {
 	if err := FillTypeInformations(infos, conn); err != nil {
 		return err
 	}

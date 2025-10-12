@@ -83,7 +83,7 @@ type Function struct {
 }
 
 // Query the database and fill the infos
-func FillFunctionInformations(infos *DbInfos, conn *pgx.Conn) error {
+func FillFunctionInformations(infos *Db, conn *pgx.Conn) error {
 	rows, err := conn.Query(context.Background(), sqlGetFunctions)
 	if err != nil {
 		return errors.Errorf("failed to query functions: %w", err)
