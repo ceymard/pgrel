@@ -14,5 +14,11 @@
 
 package web
 
+type IDb interface {
+	Infos() error
+}
+
 type Server struct {
+	// /rel -> some postgres
+	endpoints map[string]IDb
 }

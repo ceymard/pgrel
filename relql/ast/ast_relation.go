@@ -19,10 +19,10 @@ import (
 )
 
 type AstRelation struct {
-	Id *AstSqlIdentifier
-	As string
+	Id    *AstSqlIdentifier
+	Alias string
 
-	Order  []IExpression
+	Order  []IAstExpression
 	Limit  int
 	Offset int
 
