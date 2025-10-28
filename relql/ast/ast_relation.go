@@ -22,11 +22,13 @@ type AstRelation struct {
 	Id    *AstSqlIdentifier
 	Alias string
 
+	Fields []IAstField
+
 	Order  []IAstExpression
 	Limit  int
 	Offset int
 
 	// Fields []IAstField
 
-	ResolvedRelation *pg.InfoRelation
+	ResolvedRelation *pg.Relation
 }

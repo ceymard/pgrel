@@ -15,73 +15,124 @@
 package pg
 
 import (
-	"context"
-	"encoding/json"
-
 	"github.com/jackc/pgx/v5"
 	"gitlab.com/tozd/go/errors"
 )
 
-// A query we will use to fetch complex type information
-var typeQuery = /* sql */ `
-SELECT
-  t.oid AS oid,
-  t_elem.oid AS elem_oid,
-  t_elem.typname AS elem_name,
-  n_elem.nspname AS elem_schema,
-  t.typname AS type_name,
-  n.nspname AS type_schema,
-	coalesce(t_elem.typtype = 'c', t.typtype = 'c') AS "IsComposite",
-  t.typelem <> 0 AND t_elem.typname IS NOT NULL AS "IsArray",
-  json_build_object(
-		'Name', COALESCE(t_elem.typname, t.typname),
-		'Schema', COALESCE(n_elem.nspname, n.nspname),
-    'IsArray', t.typelem <> 0 AND t_elem.typname IS NOT NULL,
-		'IsComposite', coalesce(t_elem.typtype = 'c', t.typtype = 'c'),
-    'Oid', COALESCE(t_elem.oid, t.oid)::text,
-    'OidArray', CASE WHEN t_elem.oid IS NOT NULL THEN t.oid::text ELSE NULL END,
-		'RelId', coalesce(t_elem.typrelid, t.typrelid)::text
-  ) AS "Type"
-FROM
-  pg_type t
-  INNER JOIN pg_namespace n ON n.oid = t.typnamespace
-  LEFT JOIN pg_type t_elem ON t.typelem = t_elem.oid AND t_elem.typarray = t.oid
-  LEFT JOIN pg_namespace n_elem ON n_elem.oid = t_elem.typnamespace
-`
-
 type Type struct {
-	SqlIdentifier
-	IsArray     bool
-	IsComposite bool
+	PgIdentifier SqlIdentifier
 
-	Oid      string
-	OidArray string // If IsArray, the oid of the array type
-	RelId    string // When this type is a composite type
+	ArrayType   *Type     // The array type of this type
+	ElementType *Type     // The element type of this type, yielded by subscripting - does not implicate that this is an array
+	BaseType    *Type     // only not nil if this is a domain
+	Relation    *Relation // The relation that this type is a composite type of, nil otherwise
+
+	PgOid        int
+	PgElemOid    int
+	PgArrayOid   int // If IsArray, the oid of the array type
+	PgRelId      int // When this type is a composite type
+	PgRealTypeId int // The oid of the real type, if this is a domain
 }
 
+// This is the only true test for array types
+func (t *Type) IsArray() bool {
+	return t != nil && t.ElementType != nil && t.ElementType.ArrayType == t
+}
+
+func (t *Type) IsComposite() bool {
+	return t != nil && t.Relation != nil
+}
+
+func (t *Type) IsDomain() bool {
+	return t != nil && t.BaseType != nil
+}
+
+//----------------------------------------------------------------------------------
+
 // Query the database and fill the infos
-func FillTypeInformations(infos *Db, conn *pgx.Conn) error {
-	rows, err := conn.Query(context.Background(), "SELECT json_agg(t.\"Type\") FROM ("+typeQuery+") t")
-	if err != nil {
-		return errors.Errorf("failed to query types: %w", err)
-	}
-	defer rows.Close()
+func FillTypeInformations(infos *DbInfos, conn *pgx.Conn) error {
+	var ok bool
 
-	if !rows.Next() {
-		return errors.Errorf("no types found")
+	if err := scanIntoThroughJsonAgg(conn, INFO_QUERY_TYPES, &infos.Types); err != nil {
+		return err
 	}
 
-	var jsonstr string
-
-	err = rows.Scan(&jsonstr)
-	if err != nil {
-		return errors.Errorf("failed to scan types: %w", err)
+	for _, t := range infos.Types {
+		infos.TypeMapByOid[t.PgOid] = &t
 	}
 
-	err = json.Unmarshal([]byte(jsonstr), &infos.Types)
-	if err != nil {
-		return errors.Errorf("failed to unmarshal types: %w", err)
+	var type_by_relid map[int]*Type = make(map[int]*Type)
+
+	for _, t := range infos.Types {
+		if t.PgElemOid != 0 {
+			if t.ElementType, ok = infos.TypeMapByOid[t.PgElemOid]; !ok {
+				return errors.Errorf("failed to find element type %d (this should not happen)", t.PgElemOid)
+			}
+		}
+
+		if t.PgArrayOid != 0 {
+			if t.ArrayType, ok = infos.TypeMapByOid[t.PgArrayOid]; !ok {
+				return errors.Errorf("failed to find array type %d (this should not happen)", t.PgArrayOid)
+			}
+		}
+
+		if t.PgRealTypeId != 0 {
+			if t.BaseType, ok = infos.TypeMapByOid[t.PgRealTypeId]; !ok {
+				return errors.Errorf("failed to find base type %d (this should not happen)", t.PgRealTypeId)
+			}
+		}
+
+		// We'll use this when filling the relations
+		if t.PgRelId > 0 {
+			type_by_relid[t.PgRelId] = &t
+		}
 	}
+
+	// Fill the types for functions
+	for _, f := range infos.Functions {
+		// Errors should never happen here
+		var ok bool
+		if f.ReturnType, ok = infos.TypeMapByOid[f.PgReturnTypeOid]; !ok {
+			return errors.Errorf("failed to find return type %d (this should not happen)", f.PgReturnTypeOid)
+		}
+
+		for _, a := range f.Arguments {
+			if a.Type, ok = infos.TypeMapByOid[a.PgTypeOid]; !ok {
+				return errors.Errorf("failed to find argument type %d (this should not happen)", a.PgTypeOid)
+			}
+		}
+	}
+
+	for _, r := range infos.Relations {
+		if r.Type, ok = type_by_relid[r.PgRelId]; !ok {
+			return errors.Errorf("failed to find type for relation %d (this should not happen)", r.PgRelId)
+		}
+
+		for _, c := range r.Columns {
+			if c.Type, ok = infos.TypeMapByOid[c.PgTypeOid]; !ok {
+				return errors.Errorf("failed to find type %d for column %s (this should not happen) in table %s", c.PgTypeOid, c.Name, r.Identifier.String())
+			}
+		}
+	}
+
+	// Now, do the relations
 
 	return nil
 }
+
+// A query we will use to fetch complex type information
+var INFO_QUERY_TYPES = /* sql */ `
+SELECT json_agg(T) FROM (SELECT
+  t.oid::integer AS "PgOid",
+  t.typelem::integer AS "PgElemOid",
+	t.typarray::integer AS "PgArrayOid",
+	t.typrelid::integer AS "PgRelId",
+	t.typbasetype::integer AS "PgRealTypeId",
+	json_build_object(
+		'Schema', n.nspname,
+		'Name', t.typname
+	) as "PgIdentifier"
+FROM
+  pg_type t
+  INNER JOIN pg_namespace n ON n.oid = t.typnamespace
+) T;`

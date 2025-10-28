@@ -5,6 +5,6 @@ import (
 )
 
 // Resolve the correct by linking the ast to the known informations
-func Resolve(db *pg.Db) {
+func Resolve(db *pg.DbInfos) {
 
 }

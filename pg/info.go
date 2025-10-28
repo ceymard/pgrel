@@ -23,31 +23,52 @@ import (
 )
 
 // Introspection of the database.
-type Db struct {
+type DbInfos struct {
 	Pool *pgxpool.Pool
 
-	Types   []Type
-	TypeMap map[string]*Type
+	Types []Type
 
-	Functions []Function
-	Relations []InfoRelation
+	Functions []*Function
+	Relations []*Relation
 
-	FunctionMap map[string]*Function
-	RelationMap map[string]*InfoRelation
+	TypeMapByOid       map[int]*Type
+	RelationMapByRelid map[int]*Relation
 }
 
+func (db *DbInfos) GetType(oid int) *Type {
+	if t, ok := db.TypeMapByOid[oid]; ok {
+		return t
+	}
+	return nil
+}
+
+func (d *DbInfos) GetRelation(relid int) *Relation {
+	if r, ok := d.RelationMapByRelid[relid]; ok {
+		return r
+	}
+	return nil
+}
+
+func (d *DbInfos) GetRelationByType(typeOid int) *Relation {
+	if t, ok := d.TypeMapByOid[typeOid]; ok {
+		return d.GetRelation(t.PgRelId)
+	}
+	return nil
+}
+
+// ------------------------------------------------------------
+
 // Create a database connection and fill the informations
-func NewDb(uri string) (*Db, error) {
+func NewInfos(uri string) (*DbInfos, error) {
 	pool, err := pgxpool.New(context.Background(), uri)
 	if err != nil {
 		return nil, errors.Errorf("failed to create pool: %w", err)
 	}
 
-	var db = &Db{
-		Pool:        pool,
-		TypeMap:     make(map[string]*Type),
-		FunctionMap: make(map[string]*Function),
-		RelationMap: make(map[string]*InfoRelation),
+	var db = &DbInfos{
+		Pool:               pool,
+		TypeMapByOid:       make(map[int]*Type),
+		RelationMapByRelid: make(map[int]*Relation),
 	}
 
 	conn, err := pool.Acquire(context.Background())
@@ -56,28 +77,35 @@ func NewDb(uri string) (*Db, error) {
 	}
 	defer conn.Release()
 
-	db.Fill(conn.Conn())
+	if err := db.Fill(conn.Conn()); err != nil {
+		return nil, err
+	}
 
 	return db, nil
 }
 
 // Fill informations from the database
-func (db *Db) Fill(conn *pgx.Conn) error {
-	if err := FillTypeInformations(db, conn); err != nil {
-		return err
-	}
+func (db *DbInfos) Fill(conn *pgx.Conn) error {
 
-	for _, t := range db.Types {
-		db.TypeMap[t.Oid] = &t
-	}
+	// for _, t := range db.Types {
+	// 	db.TypeMap[t.oid] = &t
+	// }
 
 	if err := FillFunctionInformations(db, conn); err != nil {
 		return err
 	}
 
-	for _, f := range db.Functions {
-		db.FunctionMap[f.Identifier.String()] = &f
+	if err := FillRelationInformations(db, conn); err != nil {
+		return err
 	}
+
+	if err := FillTypeInformations(db, conn); err != nil {
+		return err
+	}
+
+	// for _, f := range db.Functions {
+	// 	db.FunctionMap[f.Identifier.String()] = &f
+	// }
 
 	// if err := FillRelationInformations(infos, conn); err != nil {
 	// 	return err

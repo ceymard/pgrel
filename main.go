@@ -19,6 +19,7 @@ import (
 	"os"
 
 	"github.com/ceymard/pgrel/pg"
+	"github.com/k0kubun/pp"
 )
 
 func main() {
@@ -27,12 +28,17 @@ func main() {
 		srv = os.Args[1]
 	}
 
-	if infos, err := pg.NewDb(srv); err != nil {
+	if infos, err := pg.NewInfos(srv); err != nil {
 		fmt.Println("Failed to create db:", err)
 		printStackTrace(err)
 		return
 	} else {
-		fmt.Println(infos)
+		for _, r := range infos.Relations {
+			if r.Identifier.Schema != "api" {
+				continue
+			}
+			pp.Println(r)
+		}
 	}
 
 }

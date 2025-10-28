@@ -14,11 +14,25 @@
 
 package pg
 
-type Column struct {
-	Name string
-	Type *Type
+type IncomingForeignKey struct {
+	Identifier       SqlIdentifier
+	OtherRelation    *Relation
+	OtherColumns     []*Column
+	OtherColumnNames []string
+	OtherIsUnique    bool // There is only one row that comes from that table that leads to me.
 
-	DefaultExpression string
+	// Targeted columns are necessarily unique.
+	SelfColumnNames []string
+	SelfColumns     []*Column
+}
 
-	Nullable bool
+type OutgoingForeignKey struct {
+	Identifier       SqlIdentifier
+	OtherRelation    *Relation
+	OtherColumns     []*Column
+	OtherColumnNames []string
+
+	SelfIsUnique    bool
+	SelfColumnNames []string
+	SelfColumns     []*Column
 }
